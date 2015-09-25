@@ -13,7 +13,7 @@ type Panic struct {
 }
 
 func (e Panic) Error() string {
-	return fmt.Sprintf("panic: %#v\n\n%s", e.Value, e.Stack)
+	return fmt.Sprintf("caught panic: %#v\n\n%s", e.Value, e.Stack)
 }
 
 // CatchOnly captures a panic and its stack trace, but only if the value given
@@ -21,20 +21,23 @@ func (e Panic) Error() string {
 // value of the error you want to catch).
 func CatchOnly(f func(), errProto interface{}) (err error) {
 	defer func() {
-		panicVal := recover()
-		if panicVal == nil {
+		r := recover()
+		if r == nil {
 			return
+		}
+
+		if _, isRuntimeError := r.(runtime.Error); isRuntimeError {
+			panic(r)
+		}
+
+		if errProto != nil && reflect.TypeOf(r) != reflect.TypeOf(errProto) {
+			panic(r)
 		}
 
 		stackBuf := make([]byte, 65535)
 		stackBuf = stackBuf[:runtime.Stack(stackBuf, false)]
-		err = Panic{string(stackBuf), panicVal}
-
-		if errProto == nil || reflect.TypeOf(panicVal) == reflect.TypeOf(errProto) {
-			return
-		}
-
-		panic(err)
+		err = Panic{string(stackBuf), r}
+		return
 	}()
 
 	f()
